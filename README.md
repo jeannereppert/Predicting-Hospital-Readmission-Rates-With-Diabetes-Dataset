@@ -1,0 +1,3 @@
+# Predicting-Hospital-Readmission-Rates-With-Diabetes-Dataset
+A collection of 70,000 clinical database patient records was used to predict hospital readmissions for diabetic patients using logistic regression and random forest models. Python was used to clean data and modeling was performed in R Studio.
+Data was used from a research paper from the Virginia Commonwealth University (Impact of HbA1c Measurement on Hospital Readmission Rates: Analysis of 70,000 Clinical Database Patient Records). Data can be downloaded from the website article's supplementary materials section (https://www.hindawi.com/journals/bmri/2014/781670/).
