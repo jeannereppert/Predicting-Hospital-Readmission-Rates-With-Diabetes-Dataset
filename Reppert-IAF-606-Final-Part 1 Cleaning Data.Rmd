@@ -1,0 +1,578 @@
+---
+title: "IAF 606 Final Project - Step 1: Cleaning and Data Preparation"
+author: "Jeanne Reppert"
+date: "4/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_knit$set(root.dir = 'C:/Users/thepi/OneDrive/Documents/UNCG/IAF 606/Final')
+```
+
+**Read file into R**
+
+```{r}
+dd <- read.csv(file="diabetic_data.csv", header=T, na.strings = "?")
+```
+
+**Load reticulate package for work in python**
+
+```{r, echo=FALSE}
+library(reticulate)
+```
+
+**Load python packages for data manipulation**
+
+```{python, echo = FALSE}
+import pandas as pd
+from pandas import DataFrame
+import numpy as np
+
+```
+
+**Read file as a pandas database into python**
+
+```{python}
+dd = pd.read_csv("diabetic_data.csv")
+```
+
+**Check data head**
+
+```{python}
+dd.head()
+```
+
+**Check number of observations and variables**
+
+```{python}
+dd.shape
+```
+
+###  Cleaning dataset in the same way that the authors of the paper cleaned the dataset  ###
+
+**Replace '?'s and 'None's with np.nan**
+
+```{python}
+dd.replace({'?': np.nan}, regex=False,inplace=True)
+dd.replace({'None': np.nan}, regex=False,inplace=True)
+```
+
+**Delete rows with discharge id's (deaths and discharges to hospice)**
+
+```{python}
+dd = dd[dd.discharge_disposition_id !=11]
+dd = dd[dd.discharge_disposition_id !=13]
+dd = dd[dd.discharge_disposition_id !=14]
+dd = dd[dd.discharge_disposition_id !=19]
+dd = dd[dd.discharge_disposition_id !=20]
+dd = dd[dd.discharge_disposition_id !=21]
+```
+
+**Retain only the first encounter for each unique patient number**
+
+```{python}
+dd = dd.drop_duplicates('patient_nbr')
+```
+
+**Check number of observations and variables again, the number of observations is very close**
+**to the total observations in the paper.**
+
+```{python}
+dd.shape
+```
+
+**Drop variables that were not used in the paper**
+
+```{python}
+dd = dd.drop(columns=['metformin', 'repaglinide', 'nateglinide',
+                      'chlorpropamide', 'glimepiride', 
+                      'acetohexamide', 'glipizide', 'glyburide', 
+                      'tolbutamide','pioglitazone', 'rosiglitazone',
+                      'acarbose', 'miglitol', 'troglitazone',
+                      'tolazamide', 'examide', 'citoglipton', 
+                      'insulin', 'glyburide-metformin',
+                      'glipizide-metformin','glimepiride-pioglitazone',
+                      'metformin-rosiglitazone', 'metformin-pioglitazone',
+                      'admission_type_id', 'num_lab_procedures', 
+                      'num_procedures', 'num_medications',
+                      'number_outpatient', 'number_emergency',
+                      'number_inpatient', 'diag_2', 'diag_3', 
+                      'number_diagnoses', 'max_glu_serum',
+                      'diabetesMed', 'payer_code', 'weight'])
+```
+
+**Check column names**
+
+```{python}
+dd.columns
+```
+
+**Rename columns for ease of display and typing**
+
+```{python}
+dd.rename(columns = {'encounter_id':'ID', 'patient_nbr':'Pat_nbr',
+                     'race':'Race', 'gender':'Gender', 'age':'Age',
+                     'discharge_disposition_id':'Discharge', 
+                     'admission_source_id':'Admit', 
+                     'time_in_hospital':'Time_hosp',
+                     'medical_specialty':'Med_spec',
+                     'diag_1':'Diag', 
+                     'A1Cresult':'HbA1c', 'readmitted':'Readmitted'}, 
+                      inplace = True)
+```
+
+###  Reorganizing variables in the same way the authors of the paper did  ###
+
+**CLeaning HbA1c**
+**Change variable HbA1c (when labeled high) based on whether meds were changed in hospital stay.**
+```{python}
+dd.loc[(dd['change'] == 'No') & (dd['HbA1c'] == '>8'),'HbA1c'] = 'High no change'
+dd.loc[(dd['change'] == 'Ch') & (dd['HbA1c'] == '>8'),'HbA1c'] = 'High med change'
+
+```
+
+**After reclassifying HbA1c variable based on change variable values, removing change**
+**variable from the final dataset**
+
+```{python}
+dd = dd.drop(columns=['change'])
+```
+
+
+**Classifying HbA1c as normal when less than 7 or labeled "Norm"**
+```{python}
+dd["HbA1c"].replace({"Norm": "Normal"}, inplace=True)
+dd["HbA1c"].replace({">7": "Normal"}, inplace=True)
+
+```
+
+**Replacing NaN values with 'No test'**
+
+```{python}
+dd["HbA1c"].fillna('No test', inplace=True)
+```
+
+**Checking final value counts for HbA1c subcategories**
+
+```{python}
+a1c_count = dd['HbA1c'].value_counts() 
+print(a1c_count) 
+```
+
+
+**Cleaning Gender**
+
+**Dropping 'Unknown/Invalid' observations (only 3 rows)**
+
+```{python}
+dd.drop( dd[ dd['Gender'] == 'Unknown/Invalid' ].index ,
+        inplace=True)
+```
+
+**Checking final value counts for Gender subcategories**
+
+```{python}
+gender_count = dd['Gender'].value_counts() 
+print(gender_count) 
+```
+
+
+**Cleaning Readmitted**
+
+**Reclassifying readmitted categories: readmissions after 30 days and "no" values**
+**are classified as other as paper was focused on early readmissions,**
+**early readmissions (readmissions <30 days) were named Readmitted**
+```{python}
+dd["Readmitted"].replace({"<30": "Readmitted"}, inplace=True)
+dd["Readmitted"].replace({"NO": "Other", ">30":"Other"}, 
+                         inplace=True)
+```
+
+**Checking final value counts for readmission subcategories**
+
+```{python}
+readmitted_count = dd['Readmitted'].value_counts()
+print(readmitted_count)
+```
+
+**Cleaning Race**
+
+**Replacing NaN values with 'missing'**
+
+```{python}
+dd["Race"].fillna('Missing', inplace=True)
+```
+
+**Consolidating Hispanic and Asian categories as "Other" and abbreviating**
+**other categories**
+
+```{python}
+dd["Race"].replace({"Hispanic": "Other", "Asian": "Other", 
+                  "Caucasian": "Cauc", "AfricanAmerican":"AfrAm"}, 
+                   inplace=True)
+```
+
+**Checking final value counts for Race subcategories**
+
+```{python}
+race_count = dd['Race'].value_counts()
+print(race_count)
+```
+
+**Cleaning Discharge**
+
+**Replacing discharge code '1' with 'To home' and replacing other codes with 'other'**
+
+```{python}
+dd['Discharge'] = dd['Discharge'].replace([1], 'To home')
+```
+
+```{python}
+dd['Discharge'] = dd['Discharge'].replace([3, 6, 18, 2, 22, 5, 25, 4, 7, 23, 
+                28, 8, 15, 24, 9, 17, 10, 16, 27, 12], 'Other')
+```
+
+**Checking final value counts for Discharge subcategories**
+
+```{python}
+discharge_count = dd['Discharge'].value_counts()
+print(discharge_count)
+```
+
+
+**Cleaning Admission**
+
+**Replacing admission code '7' with 'From ER' and codes '1', '2', and '3' with**
+**'Dr. referral', remaing codes with 'Other'**
+
+```{python}
+dd['Admit'] = dd['Admit'].replace([7], 'From ER')
+```
+
+
+```{python}
+dd['Admit'] = dd['Admit'].replace([1, 2, 3],
+                                  'Dr. referral')
+```
+
+
+```{python}
+dd['Admit'] = dd['Admit'].replace([17, 4,6,5,20,9,8,10,22,25,14,13,11],
+                                    'Other')
+```
+
+**Checking final value counts for Admission subcategories**
+
+```{python}
+admission_count = dd['Admit'].value_counts()
+print(admission_count)
+```
+
+**Cleaning Medical Specialty**
+
+**Reclassifying Medical Specialty codes and renaming them as 6 categories including**
+**consolidating surgery categories and cardiology categories, categories that were not**
+**part of Family/General Medicine or Internal Medicine (and were not surgery or cardiology**
+**categories) are categorized as "Other", NaN values are replaced as 'unknown'**
+
+```{python}
+dd["Med_spec"].fillna('Unknown', inplace=True)
+```
+
+
+```{python}
+dd['Med_spec'] = dd['Med_spec'].replace(['Surgery-General', 
+                        'Surgery-PlasticwithinHeadandNeck', 'Surgery-Pediatric', 
+                        'Surgery-Maxillofacial', 'Surgery-Colon&Rectal',
+                        'SurgicalSpecialty', 'Surgery-Plastic', 'Surgeon',
+                        'Surgery-Cardiovascular', 'Surgery-Thoracic', 'Surgery-Neuro', 
+                        'Surgery-Cardiovascular/Thoracic', 'Surgery-General', 
+                        'Surgery-Vascular'],
+                        'Surgery')
+```
+
+
+```{python}
+dd['Med_spec'] = dd['Med_spec'].replace(['Orthopedics',
+            'Orthopedics-Reconstructive','Radiologist','Nephrology','Pulmonology',
+            'Psychiatry','ObstetricsandGynecology','Urology','Gastroenterology',
+            'Oncology','Pediatrics','PhysicalMedicineandRehabilitation',
+            'Neurology','Pediatrics-Endocrinology','Otolaryngology',
+            'Hematology/Oncology','Endocrinology','Pediatrics-CriticalCare',
+            'Podiatry','Gynecology','Psychology','Radiology','Osteopath',
+            'Hospitalist','Ophthalmology','Hematology','InfectiousDiseases',
+            'Obsterics&Gynecology-GynecologicOnco','Obstetrics',
+            'Anesthesiology-Pediatric','Rheumatology','OutreachServices',
+            'PhysicianNotFound','Anesthesiology','Pediatrics-Neurology',
+            'Endocrinology-Metabolism','Psychiatry-Child/Adolescent',
+            'Pediatrics-Pulmonology','AllergyandImmunology','Pathology',
+            'DCPTEAM','Dentistry','Pediatrics-EmergencyMedicine',
+            'Pediatrics-Hematology-Oncology','Resident','Neurophysiology',
+            'SportsMedicine','Speech','Dermatology','Perinatology',
+            'Psychiatry-Addictive','Proctology','Emergency/Trauma'], 'Other')
+```
+
+
+
+```{python}
+dd["Med_spec"].replace({"Cardiology-Pediatric": "Cardio", "Cardiology": "Cardio"}, 
+                                inplace=True)
+```
+
+
+```{python}
+dd["Med_spec"].replace({"Family/GeneralPractice": "Fam/GenPract"}, 
+                                inplace=True)
+```
+
+
+```{python}
+dd["Med_spec"].replace({"InternalMedicine": "IntMed"}, 
+                                inplace=True)
+```
+
+**Checking final value counts for Medical Specialty subcategories**
+
+```{python}
+medical_specialty_count = dd['Med_spec'].value_counts()
+print(medical_specialty_count)
+```
+
+**Cleaning Diagnosis**
+
+**Diagnosis codes were consolidated, reclassified and renamed**
+**to 9 new categories with NaN values assigned to category 'Other'**
+
+```{python}
+dd['Diag']=dd.Diag.str.replace('V+', '1000000')
+```
+
+
+```{python}
+dd['Diag']=dd.Diag.str.replace('E+', '5000000')
+```
+
+
+```{python}
+dd = dd.astype({"Diag": float})
+```
+
+
+```{python}
+#1: Circulatory - 390-459, 785
+#2: Digestive - 520-579, 787
+#3: Genitourinary - 580-629, 788
+#4: Diabetes - 250.xx
+#5: Injury - 800 - 999
+#6: Musculoskeletal - 710 - 739
+#7: Neoplasms - 140 - 239
+#8: Respiratory - 460 - 519, 786
+#9: Other - 100000 - 600000
+dd['Diag'] = np.where(dd['Diag'].between(390,459),
+                           1000, dd['Diag'])
+dd['Diag'] = dd['Diag'].replace([785], 1000)
+dd['Diag'] = np.where(dd['Diag'].between(520,579), 
+                           2000, dd['Diag'])
+dd['Diag'] = dd['Diag'].replace([787], 2000)
+dd['Diag'] = np.where(dd['Diag'].between(580,629),
+                           3000, dd['Diag'])
+dd['Diag'] = dd['Diag'].replace([788], 3000)
+dd['Diag'] = np.where(dd['Diag'].between(250,250.99),
+                           4000, dd['Diag'])
+dd['Diag'] = np.where(dd['Diag'].between(800,999), 
+                           5000, dd['Diag'])
+dd['Diag'] = np.where(dd['Diag'].between(710,739),
+                           6000, dd['Diag'])
+dd['Diag'] = np.where(dd['Diag'].between(140,239), 
+                           7000, dd['Diag'])
+dd['Diag'] = np.where(dd['Diag'].between(460,519), 
+                           8000, dd['Diag'])
+dd['Diag'] = dd['Diag'].replace([786], 8000)
+dd['Diag'] = np.where(dd['Diag'].between(100000000,6000000000), 
+                           9000, dd['Diag'])
+```
+
+
+```{python}
+dd['Diag'] = np.where(dd['Diag'].between(0,999), 
+                           9000, dd['Diag'])
+```
+
+
+```{python}
+dd['Diag'] = dd['Diag'].replace([1000], 'Circ')
+dd['Diag'] = dd['Diag'].replace([2000], 'Dig')
+dd['Diag'] = dd['Diag'].replace([3000], 'Genit')
+dd['Diag'] = dd['Diag'].replace([4000], 'Diabetes')
+dd['Diag'] = dd['Diag'].replace([5000], 'Injury')
+dd['Diag'] = dd['Diag'].replace([6000], 'Musc/skel')
+dd['Diag'] = dd['Diag'].replace([7000], 'Neoplasms')
+dd['Diag'] = dd['Diag'].replace([8000], 'Resp')
+dd['Diag'] = dd['Diag'].replace([9000], 'Other')
+```
+
+
+```{python}
+dd["Diag"].fillna('Other', inplace=True)
+```
+
+**Checking final value counts for Diagnosis subcategories**
+
+```{python}
+diag_count = dd['Diag'].value_counts()
+print(diag_count)
+```
+
+
+**Cleaning Age**
+
+**Age is recategorized into two variables. The first takes the median age of each**
+**category and assigns these observations this value as an integer, the second variable**
+**reduces age to three categories (<30, 30-60, and >30).**
+
+```{python}
+dd = dd.assign(Age_numeric =lambda x: x['Age'])
+```
+
+
+```{python}
+dd["Age_numeric"].replace({"[0-10)": 5, "[10-20)": 15, "[20-30)": 25, 
+                        "[30-40)": 35, "[40-50)": 45, "[50-60)": 55,
+                        "[60-70)": 65, "[70-80)": 75, "[80-90)": 85,
+                         "[90-100)": 95}, inplace=True)
+```
+
+**Checking new Age_numeric variable**
+
+```{python}
+dd.Age_numeric.describe()
+```
+
+
+```{python}
+dd["Age"].replace({"[0-10)": "<30", "[10-20)": "<30", 
+                   "[20-30)": "<30", "[30-40)": "30-60",
+                   "[40-50)": "30-60", "[50-60)": "30-60",
+                  "[60-70)": ">60", "[70-80)": ">60",
+                   "[80-90)": ">60",
+                   "[90-100)": ">60"}, inplace=True)
+```
+
+**Checking final value counts for Age subcategories**
+
+```{python}
+age_count = dd['Age'].value_counts()
+print(age_count)
+```
+
+**Reviewing values for Time in Hospital variable - no changes were**
+**made to this variable**
+
+```{python}
+dd.Time_hosp.describe()
+```
+
+
+**Sending cleaned dataframe to csv file**
+
+```{python}
+dd.to_csv("cleaned_diabetic_data.csv")
+
+```
+
+**Loading csv file for further reconfiguring and exploration in R**
+
+```{r}
+dd <- read.csv(file="cleaned_diabetic_data.csv", header=T, na.strings = "?")
+```
+
+**Reassigning variable references**
+
+```{r}
+dd <- within(dd, Admit <- relevel(Admit, ref = 'From ER'))
+dd <- within(dd, Diag <- relevel(Diag, ref = 'Diabetes'))
+dd <- within(dd, Discharge <- relevel(Discharge, ref = 'To home'))
+dd <- within(dd, Age <- relevel(Age, ref = '30-60'))
+dd <- within(dd, HbA1c <- relevel(HbA1c, ref = 'No test'))
+```
+
+**Reviewing all variables**
+
+```{r, echo=FALSE}
+library(summarytools)
+```
+
+**Summary statistics of final cleaned Data**
+
+```{r}
+
+print(dfSummary(dd, graph.magnif = 0.75), method = 'render')
+```
+
+**Reading in packages in order to produce final table**
+
+```{r, echo=FALSE}
+library(sjPlot)
+library(sjlabelled)
+library(summarytools)
+library(arsenal)
+```
+
+###  Tables to show Figure 3 information  ###
+The table below was produced to match the values in table 3 in the article.
+
+```{r, results = 'asis'}
+tab <- tableby(Readmitted ~ Admit + Diag + Discharge + Time_hosp + Med_spec + Diag
+                + HbA1c + Race + Gender + Age + Age_numeric, data=dd, test=FALSE)
+summary(tab, text = TRUE)
+```
+
+**Writing final dataframe to csv for use in logistic regression and random**
+**forest files (Parts 2 and 3)**
+
+```{r}
+write.csv(dd,"cleaned_diabetic_data.csv", row.names = FALSE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

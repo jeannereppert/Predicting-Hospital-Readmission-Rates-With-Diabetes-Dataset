@@ -1,0 +1,476 @@
+---
+title: "Diabetic Data - Part 2: Logistic Regression Models"
+author: "Jeanne Reppert"
+date: "April 27, 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+**R setup and Load Libraries**
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'C:/Users/thepi/OneDrive/Documents/UNCG/IAF 606/Final')
+
+library(sjlabelled)
+library(dplyr)
+library(mosaic)
+library(sjPlot)
+library(psych)
+library(sjmisc)
+library(naniar)
+library(car)
+library(visdat)
+library(UpSetR)
+library(magrittr)
+library(stargazer)
+library(arsenal)
+library(descr)
+library(summarytools)
+library(jtools)
+library(kableExtra)
+library(caTools)
+library(pROC)
+
+```
+
+
+**Load dataset (cleaned in Final Project Part 1 file)**
+
+```{r}
+dd <- read.csv(file="cleaned_diabetic_data.csv", header=T)
+
+```
+
+```{r}
+dd = subset(dd, select = -c(X, ID, Pat_nbr))
+```
+
+
+###  Constructing the model found in the paper and analysis  ###
+
+**Model with all variables except HbA1c**
+```{r}
+#Initial model - all variables except HbA1c
+model_1.1 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                      Time_hosp + Age + Diag + Gender,
+                    family = binomial, data=dd)
+Anova(model_1.1)
+```
+
+**Model with gender omitted**
+```{r}
+# Initial model without gender
+model_1.2 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                      Time_hosp + Age + Diag,
+                    family = binomial, data=dd)
+Anova(model_1.2)
+```
+
+**Model with gender omitted and HbA1c included**
+```{r}
+#Initial model without gender and HbA1c included
+model_1.3 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                      Time_hosp + Age + Diag + HbA1c,
+                    family = binomial, data=dd)
+Anova(model_1.3)
+```
+
+### Fitting model with interactions shown in figure 5  ###
+
+**Model created once interactions that were not significant were eliminated and before HbA1c was added.**
+
+```{r}
+#Table 5 
+model_tb5.0 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                      Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge + 
+                      Discharge:Time_hosp + Med_spec:Discharge
+                    + Time_hosp:Med_spec + Time_hosp:Diag,
+                    family = binomial, data=dd)
+
+Anova(model_tb5.0)
+```
+
+### Final model found in paper ###
+
+**Fit model using all variables and figure 5 interactions**
+A new model was fitted (model_tb5.1) using only the variables and interactions shown in figure 5. This model produced an AIC of 41420. All interactions appear to be siginificant with values less than .05 (all interactions actually are less than .01). The Pr(>Chisq) for HbA1c is 0.045034.
+```{r}
+#Model used to produce Table 5 
+model_tb5.1 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                      Time_hosp + Age + Diag + HbA1c + Age:Med_spec + Diag:Discharge + Race:Discharge + 
+                      Discharge:Time_hosp + Med_spec:Discharge
+                    + Time_hosp:Med_spec + Time_hosp:Diag + HbA1c:Diag,
+                    family = binomial, data=dd)
+#summary(model_tb5.1)#AIC: 41457
+Anova(model_tb5.1)
+```
+
+### Final Model Table ###
+
+<br>
+
+## Table created with model_tb5.1 in order to compare output with figure 5 table ##
+
+**Figure 5 table of coefficients and Pr(>Chisq)s**
+```{r}
+stargazer(model_tb5.1, type="text", report = "vcp*", font.size = 'tiny', single.row=TRUE)
+```
+
+<br>
+
+###  Final Model Analysis  ###
+
+
+```{r}
+glm.probs = predict(model_tb5.1, type="response")
+glm.probs[1:10]
+```
+
+
+```{r}
+contrasts(dd$Readmitted)
+```
+
+
+```{r}
+glm.pred=rep("Other", 69970)
+```
+
+**Setting model cutoff at .1**
+
+```{r}
+glm.pred[glm.probs>.1]="Readmitted"
+```
+
+
+```{r}
+attach(dd)
+table(glm.pred,Readmitted)
+```
+
+**Splitting dd into train/test sets**
+
+```{r}
+set.seed(123)
+sample = sample.split(dd,SplitRatio = 0.70)
+train_dd =subset(dd,sample ==TRUE)
+test_dd=subset(dd, sample==FALSE)
+dim(test_dd)
+dim(train_dd)
+```
+
+**Finding model predictions based on test set**
+
+```{r}
+glm.probs = predict(model_tb5.1, test_dd, type="response")
+```
+
+**Creating confusion matrix**
+
+```{r}
+glm.pred=rep("Other", 18659)
+glm.pred[glm.probs>.1] = "Readmitted"
+mytable = table(glm.pred,test_dd$Readmitted)
+mytable
+```
+
+
+**Efficiency/accuracy measure**
+
+```{r}
+efficiency <- sum(diag(mytable))/sum(mytable)
+efficiency
+```
+
+**Plotting area under curve**
+
+```{r}
+roc(Readmitted~model_tb5.1$fitted.values, data = dd, plot = TRUE, main = "ROC CURVE", col= "blue")
+
+```
+
+**Calculating auc measure**
+
+```{r}
+auc(Readmitted~model_tb5.1$fitted.values, data = dd)
+```
+
+**Extracting true/false negatives/positives from confusion matrix**
+
+```{r}
+TP <- mytable[1, 1]
+TN <- mytable[2, 2] 
+FP <- mytable[1, 2]
+FN <- mytable[2, 1]
+```
+
+
+```{r}
+#calculating correct classification rate
+rate <- (TP + TN) / (TP + TN + FP + FN)
+rate <- round(rate, 4)*100
+rate
+```
+
+
+**Quantitative analysis for paper model**
+
+```{r}
+precision <- TP/(TP + FP)
+cat('Precision:', precision)
+cat("\n")  
+specificity <- TN/(TN + FP)
+cat('Specificity:', specificity)
+cat("\n")  
+sensitivity <- TP/(TP + FN)
+cat('Sensitivity:', sensitivity)
+cat("\n")  
+F1_Score <- 2*TP/(2*TP + FP + FN)
+cat("F1_Score:", F1_Score)
+cat("\n")  
+J = sensitivity + specificity - 1
+cat('J:', J)
+
+
+```
+
+
+### Building a better model using logistic regression ###
+
+
+
+**Fit figure 5 model adding Admit:Age**
+**Given the observations of the last set of model constructions, these next few models will**
+**explore whether Admit:Age and Admit:Dialog are also significant. The model tb5.2 adds**
+**Admit:Age to the above model with the HbA1c variable omitted. Admit:Age**
+**had a Pr(>Chisq) 0.008508 - this interaction is significant and will remain in the model.**
+
+```{r}
+model_tb5.2 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                   Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag
+                   + Med_spec:Discharge, family = binomial, data=dd)
+#summary(model_tb5.2) #AIC: 41449
+Anova(model_tb5.2)
+```
+
+**Using age_numeric instead of age variable**
+**The AIC measure generated does not show that using age_numeric instead of the age**
+**category is an improvement. Additionally, Pr(>Chisq) values for Age_numeric and**
+**Age_numeric interactions increases so Age will be the preferred variable in the model.**
+```{r}
+model_tb5.2a <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                   Time_hosp + Age_numeric + Diag + Age_numeric:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Age_numeric + Time_hosp:Med_spec + Time_hosp:Diag
+                   + Med_spec:Discharge, family = binomial, data=dd)
+#summary(model_tb5.2a) #AIC: 41479
+Anova(model_tb5.2a)
+```
+
+**Removing the interaction between time in hospital and medical specialty.**
+```{r}
+model_tb5.2b <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                   Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Age + Time_hosp:Diag
+                   + Med_spec:Discharge, family = binomial, data=dd)
+#summary(model_tb5.2b) #AIC: 41456
+Anova(model_tb5.2b)
+```
+
+**Removing the interaction between time in hospital and medical specialty did not improve the model.**
+**Pr(>Chi) for the addition of Time_hosp:Med_spec is 0.004445 which confirms the significance of this interaction.**
+```{r}
+anova(model_tb5.2b, model_tb5.2, test = "LRT")
+```
+
+**Checking to see if adding the interaction between admissions and medical specialty improves the model.**
+**Admit:Med_spec Pr(>Chisq) is 0.0915773 confirming that this interaction is not significant**
+```{r}
+model_tb5.2c <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                   Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag
+                   + Med_spec:Discharge + Admit:Med_spec, family = binomial, data=dd)
+#summary(model_tb5.2c) #AIC: 41453
+Anova(model_tb5.2c)
+```
+
+
+**Model_tb5.3 is fitted adding the Admit:Diag interaction (without tHbA1c values) to explore.**
+**whether this interaction is significant. Admit:Diag Pr(>Chisq) is 0.0060984 confirming that this**
+**interaction is significant and will be kept in the model.**
+```{r}
+model_tb5.3 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec + 
+                     Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge + 
+                     Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag
+                   + Med_spec:Discharge,
+                   family = binomial, data=dd)
+#summary(model_tb5.3) #AIC: 41455
+Anova(model_tb5.3)
+```
+
+
+**Model_tb5.4 is fitted adding the Med_spec:Diag interaction (without tHbA1c values) to explore**
+**whether this interaction is significant. Med_spec:Diag Pr(>Chisq) is 0.0023047 confirming that this**
+**interaction is significant and will be kept in the model.**
+
+```{r}
+model_tb5.4 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec +
+                   Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag + 
+                   Med_spec:Discharge + Med_spec:Diag, family = binomial, data=dd, na.action = na.exclude)
+#summary(model_tb5.4)
+Anova(model_tb5.4)
+```
+
+
+**Model_tb5.5 is fitted adding the Race:Diag interaction (without tHbA1c values) to explore**
+**whether this interaction is significant. Race:Diag Pr(>Chisq) is 0.1112454 confirming that this**
+**interaction is not significant and will not be kept in the model.**
+```{r}
+model_tb5.5 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec +
+                   Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag + 
+                   Med_spec:Discharge + Med_spec:Diag + Race:Diag,
+                  family = binomial, data=dd, na.action = na.exclude)
+#summary(model_tb5.5)
+Anova(model_tb5.5)
+```
+
+**Model_tb5.5 is fitted adding the Race:Admit interaction (without tHbA1c values) to explore**
+**whether this interaction is significant. Race:Admit Pr(>Chisq) is 0.2179067 confirming that this**
+**interaction is not significant and will not be kept in the model.**
+```{r}
+model_tb5.6 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec +
+                   Time_hosp + Age + Diag + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag + 
+                   Med_spec:Discharge + Med_spec:Diag + Race:Admit, 
+                  family = binomial, data=dd, na.action = na.exclude)
+#summary(model_tb5.6)
+Anova(model_tb5.6)
+```
+
+## Conclusions ##
+
+**The chosen model was model_tb5.4F. This model will be used to add HbA1c and the interaction**
+**between HbA1c and Diagnosis**
+
+
+##  Final Model - Adding HbA1c back into the model with the HbA1c:Diag interaction.#
+
+```{r}
+model_tb5.4F <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec +
+                   Time_hosp + Age + Diag + HbA1c + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag + 
+                   Med_spec:Discharge + Med_spec:Diag + HbA1c:Diag, family = binomial, data=dd, 
+                  na.action=na.exclude)
+#summary(model_tb5.4F)
+Anova(model_tb5.4F)
+```
+
+
+
+
+**Checking for significance with interaction between HbA1c and Admit. This interaction**
+**had a Pr(>Chisq) value of 0.7501402 so it will not be kept in the model.**
+```{r}
+model_tb5.4F2 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec +
+                   Time_hosp + Age + Diag + HbA1c + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag + 
+                   Med_spec:Discharge + Med_spec:Diag + HbA1c:Diag + HbA1c:Admit, family = binomial, data=dd, 
+                  na.action=na.exclude)
+summary(model_tb5.4F2) 
+Anova(model_tb5.4F2)
+```
+
+**Checking for significance with interaction between HbA1c and Med_spec**
+**This interaction had a value of so it will not be kept in the model.**
+```{r}
+model_tb5.4F3 <- glm(Readmitted ~ Discharge + Race + Admit + Med_spec +
+                   Time_hosp + Age + Diag + HbA1c + Age:Med_spec + Diag:Discharge + Race:Discharge +
+                  Discharge:Time_hosp + Admit:Diag + Admit:Age + Time_hosp:Med_spec + Time_hosp:Diag + 
+                   Med_spec:Discharge + Med_spec:Diag + HbA1c:Diag + HbA1c:Med_spec, family = binomial, data=dd, 
+                  na.action=na.exclude)
+summary(model_tb5.4F3) 
+Anova(model_tb5.4F3)
+```
+
+
+###Table created with model_tb5.1 in order to compare output with figure 5 table###
+
+**Figure 5 table of coefficients and Pr(>Chisq)s for new model**
+```{r}
+stargazer(model_tb5.4F, type="text", report = "vcp*", font.size = 'tiny', single.row=TRUE)
+```
+
+**Looking at model probabilities**
+
+```{r}
+glm.probs2 = predict(model_tb5.4F, test_dd, type="response")
+glm.probs2[1:10]
+```
+
+
+```{r}
+glm.pred2=rep("Other", 18659)
+glm.pred2[glm.probs2>.1] = "Readmitted"
+mytable2 = table(glm.pred2,test_dd$Readmitted)
+```
+
+
+```{r}
+mytable2
+```
+
+
+```{r}
+efficiency2 <- sum(diag(mytable2))/sum(mytable2) #accuracy
+efficiency2
+```
+
+
+```{r}
+roc(Readmitted~model_tb5.4F$fitted.values, data = dd, plot = TRUE, main = "ROC CURVE", col= "blue")
+```
+
+
+```{r}
+auc(Readmitted~model_tb5.4F$fitted.values, data = dd)
+```
+
+
+```{r}
+TP2 <- mytable2[1, 1]
+TN2 <- mytable2[2, 2] 
+FP2 <- mytable2[1, 2]
+FN2 <- mytable2[2, 1]
+```
+
+
+```{r}
+#calculating correct classification rate
+rate2 <- (TP2 + TN2) / (TP2 + TN2 + FP2 + FN2)
+rate2 <- round(rate2, 4)*100
+rate2
+```
+
+
+```{r}
+precision <- TP2/(TP2 + FP2)
+cat('Precision:', precision)
+cat("\n")  
+specificity <- TN2/(TN2 + FP2)
+cat('Specificity:', specificity)
+cat("\n")  
+sensitivity <- TP2/(TP2 + FN2)
+cat('Sensitivity:', sensitivity)
+cat("\n")  
+F1_Score <- 2*TP2/(2*TP2 + FP2 + FN2)
+cat("F1_Score:", F1_Score)
+cat("\n")  
+J = sensitivity + specificity - 1
+cat('J:', J)
+
+
+```
+
+

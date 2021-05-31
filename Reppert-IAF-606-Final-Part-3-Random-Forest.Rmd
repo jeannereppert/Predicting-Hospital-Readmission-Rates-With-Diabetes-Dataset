@@ -1,0 +1,683 @@
+---
+title: "Reppert-IAF-606-Final-Part-3-Random-Forest"
+author: "Jeanne Reppert"
+date: "4/27/2020"
+output: html_document
+---
+**Set up and read in file from part 1**
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'C:/Users/thepi/OneDrive/Documents/UNCG/IAF 606/Final')
+
+dd <- read.csv(file="cleaned_diabetic_data.csv", header=T, na.strings = "?")
+```
+
+**Load libraries for random forest and analysis**
+```{r, echo=FALSE}
+library(randomForest)
+library(caTools)
+library(caret)
+library(e1071)
+```
+
+**drop columns that will not be used for random forest**
+```{r}
+dd = subset(dd, select = -c(X, ID, Pat_nbr))
+```
+
+
+**reorder columns so that target column is last)
+```{r}
+dd = dd[c(1,2,3,4,5,6,7,8, 9, 11, 10)]
+```
+
+
+**Create test and train sets and check set dimensions**
+```{r}
+set.seed(123)
+sample = sample.split(dd$Readmitted, SplitRatio = .70)
+train = subset(dd, sample == TRUE)
+test  = subset(dd, sample == FALSE)
+dim(train)
+dim(test)
+```
+
+## Model 1 ##
+
+**Create first model with all variables included, set cutoff at .10**
+```{r}
+set.seed(123)
+rf1 <- randomForest(Readmitted ~ ., data=train, importance = TRUE, cutoff = c(0.9,0.1))
+```
+
+**results of model 1 with training set**
+```{r}
+rf1
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction <-predict(rf1,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm1 = confusionMatrix(prediction, test$Readmitted, mode = "everything")
+cm1
+```
+**Investigate variable importances**
+```{r}
+var1 <- varImp(rf1)
+var1
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf1)
+```
+
+**Calculate Youden's Index**
+```{r}
+cm1$byClass[1]
+cm1$byClass[2]
+J1 <- 0.8824237  + 0.1448276   - 1
+cat('J1:', J1)
+```
+
+
+## Model 2 ##
+
+**Create second model with all variables except age, set cutoff at .10**
+```{r}
+set.seed(123)
+rf2 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric + 
+          Race + HbA1c + Admit + Gender + Discharge, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 2 training results, error rate increased**
+```{r}
+rf2
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction2 <-predict(rf2,test[-11])
+```
+
+**Create confusion matrix using predictions, accuracy decreased but**
+**number of readmissions correctly predicted increased**
+```{r}
+cm2 = confusionMatrix(prediction2, test$Readmitted, mode = "everything")
+cm2
+```
+**Investigate variable importances**
+```{r}
+var2 <- varImp(rf2)
+var2
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf2)
+```
+
+**Calculate Youden's Index**
+```{r}
+cm2$byClass[1]
+cm2$byClass[2]
+J2 <- 0.8580922 + 0.1846154  - 1
+cat('J2:', J2)
+```
+
+
+## Model 3 ##
+
+**Create model with all variables except age and discharge, set cutoff at .10**
+**Removing discharge appears to significantly reduce the models effectiveness**
+```{r}
+set.seed(123)
+rf3 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric +
+              Race + HbA1c + Admit + Gender, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 3 output**
+**Accuracy increased but fewer readmitted predicted**
+```{r}
+rf3
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction3 <-predict(rf3,test[-11])
+```
+
+**Create confusion matrix using predictions**
+**Accuracy rate increased but correctly predicted readmitted**
+**values went down.**
+```{r}
+cm3 = confusionMatrix(prediction3, test$Readmitted, mode = "everything")
+cm3
+```
+**Investigate variable importances**
+```{r}
+var3 <- varImp(rf3)
+var3
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf3)
+```
+
+**Calculate Youden's Index**
+**Very low index**
+```{r}
+cm3$byClass[1]
+cm3$byClass[2]
+J3 <- 0.9510753 + 0.05676393  - 1
+cat('J3:', J3)
+```
+`
+
+
+## Model 4 ##
+
+**Create model with all variables except age, and gender (adding discharge back in), set cutoff at .10**
+```{r}
+set.seed(123)
+rf4 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric +
+              Race + HbA1c + Admit + Discharge, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 4 training output**
+**Relatively low error rate**
+**
+```{r}
+rf4
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction4 <-predict(rf4,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm4 = confusionMatrix(prediction4, test$Readmitted, mode = "everything")
+cm4
+```
+**Investigate variable importances**
+```{r}
+var4 <- varImp(rf4)
+var4
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf4)
+```
+
+**Calculate Youden's Index**
+**Almost 0**
+```{r}
+cm4$byClass[1]
+cm4$byClass[2]
+J4 <- 0.9530637   + 0.05464191  - 1
+cat('J4:', J4)
+```
+
+
+
+## Model 5 ##
+
+**Create model with all variables except age, gender and admit,**
+**set cutoff at .10**
+```{r}
+set.seed(123)
+rf5 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric + Discharge + 
+              Race + HbA1c, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 5 output**
+```{r}
+rf5
+```
+
+
+**Model 5 output**
+```{r}
+rf5
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction5 <-predict(rf5,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm5 = confusionMatrix(prediction5, test$Readmitted, mode = "everything")
+cm5
+```
+**Investigate variable importances**
+```{r}
+var5 <- varImp(rf5)
+var5
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf5)
+```
+
+**Calculate Youden's Index**
+**Too low**
+```{r}
+cm5$byClass[1]
+cm5$byClass[2]
+J5 <- 0.9588195   + 0.04244032 - 1
+cat('J5:', J5)
+```
+
+
+## Model 6 ##
+
+**Create model with all variables except age, gender, admit,**
+**and HbA1c, set cutoff at .10**
+```{r}
+set.seed(123)
+rf6 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric + Discharge + 
+              Race, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+ **Model 6 output**
+```{r}
+rf6
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction6 <-predict(rf6,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm6 = confusionMatrix(prediction6, test$Readmitted, mode = "everything")
+cm6
+```
+**Investigate variable importances**
+```{r}
+var6 <- varImp(rf6)
+var6
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf6)
+```
+
+**Calculate Youden's Index**
+**Still too low**
+```{r}
+cm6$byClass[1]
+cm6$byClass[2]
+J6 <- 0.9678719 +  0.03766578  - 1
+cat('J6:', J6)
+```
+
+## Model 7 ##
+
+**Create model with all variables except age, gender,**
+**admit, HbA1c, and Race, set cutoff at .10**
+```{r}
+set.seed(123)
+rf7 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric + Discharge,
+              data=train, importance = TRUE,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 7 training output**
+```{r}
+rf7
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction7 <-predict(rf7,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm7 = confusionMatrix(prediction7, test$Readmitted, mode = "everything")
+cm7
+```
+**Investigate variable importances**
+```{r}
+var7 <- varImp(rf7)
+var7
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf7)
+```
+
+**Calculate Youden's Index**
+**Still too low**
+```{r}
+cm7$byClass[1]
+cm7$byClass[2]
+J7 <- 0.9772906 + 0.02493369  - 1
+cat('J7:', J7)
+```
+
+
+## Model 8 ##
+
+**Create model with Time_hosp, Diag and Med_spec, Discharge, set cutoff at .10**
+```{r}
+set.seed(123)
+rf8 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Discharge, 
+                    importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 8 training output**
+```{r}
+rf8
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction8 <-predict(rf8,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm8 = confusionMatrix(prediction8, test$Readmitted, mode = "everything")
+cm8
+```
+**Investigate variable importances**
+```{r}
+var8 <- varImp(rf8)
+var8
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf8)
+```
+
+**Calculate Youden's Index**
+```{r}
+cm8$byClass[1]
+cm8$byClass[2]
+J8 <- 0.9955 + 0.003713528   - 1
+cat('J8:', J8)
+```
+
+
+
+## Model 9 ##
+
+**Create model with Time_hosp, Admit, Discharge, HbA1c and Diag, set cutoff at .10**
+```{r}
+set.seed(123)
+rf9 <- randomForest(Readmitted ~ Time_hosp + Diag + Discharge + Admit + HbA1c,
+                    importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+```{r}
+rf9
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction9 <-predict(rf9,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm9 = confusionMatrix(prediction9, test$Readmitted, mode = "everything")
+cm9
+```
+**Investigate variable importances**
+```{r}
+var9 <- varImp(rf9)
+var9
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf9)
+```
+
+**Calculate Youden's Index**
+**Still too low**
+```{r}
+cm9$byClass[1]
+cm9$byClass[2]
+J9 <- 0.995657 + 0.005835544  - 1
+cat('J9:', J9)
+```
+
+
+
+## Model 10 ##
+
+**Create model with all variables except age_numeric, set cutoff at .10**
+```{r}
+set.seed(123)
+rf10 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age +
+              Race + HbA1c + Admit + Gender + Discharge, data=train,
+              importance = TRUE, cutoff = c(0.9,0.1))
+```
+
+**Model 10 training output**
+**This model looks more promising.**
+```{r}
+rf10
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction10 <-predict(rf10,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm10 = confusionMatrix(prediction10, test$Readmitted, mode = "everything")
+cm10
+```
+**Investigate variable importances**
+```{r}
+var10 <- varImp(rf10)
+var10
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf10)
+```
+
+**Calculate Youden's Index**
+**Not as good as model with age_numeric (model 1)**
+**instead of age categorical.**
+```{r}
+cm10$byClass[1]
+cm10$byClass[2]
+J10 <- 0.9135053 + 0.1098143 - 1
+cat('J10:', J10)
+```
+
+## Model 11 ##
+
+**Create model with Time_hosp, Diag, Med_spec, Age_numeric and HbA1c, set cutoff at .10**
+```{r}
+set.seed(123)
+rf11 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric +
+              HbA1c, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+```{r}
+rf11
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction11 <-predict(rf11,test)
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm11 = confusionMatrix(prediction11, test$Readmitted, mode = "everything")
+cm11
+```
+**Investigate variable importances**
+```{r}
+var11 <- varImp(rf11)
+var11
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf11)
+```
+
+**Calculate Youden's Index**
+**Negative?**
+```{r}
+cm11$byClass[1]
+cm11$byClass[2]
+J11 <- 0.9652033 + 0.02970822 - 1
+cat('J11:', J11)
+```
+
+
+## Model 12 ##
+
+**Create model with Time_hosp, Diag, Med_spec, Age_numeric, Admit,**
+**Discharge and HbA1c, set cutoff at .10**
+```{r}
+set.seed(123)
+rf12 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric +
+              Discharge + Admit + HbA1c, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+
+```{r}
+rf12
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction12 <-predict(rf12,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm12 = confusionMatrix(prediction12, test$Readmitted, mode = "everything")
+cm12
+```
+**Investigate variable importances**
+```{r}
+var12 <- varImp(rf12)
+var12
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf12)
+```
+
+**Calculate Youden's Index**
+```{r}
+cm12$byClass[1]
+cm12$byClass[2]
+J12 <- 0.9614358 + 0.04403183  - 1
+cat('J12:', J12)
+```
+
+
+## Model 13 ##
+
+**Create model with all variables except age and race , set cutoff at .10**
+```{r}
+set.seed(123)
+rf13 <- randomForest(Readmitted ~ Time_hosp + Diag + Med_spec + Age_numeric +
+              Gender + HbA1c + Admit + Discharge, importance = TRUE, data=train,
+              cutoff = c(0.9,0.1))
+```
+
+**Model 13 training output**
+**Relatively low error rate**
+
+```{r}
+rf13
+```
+
+
+**Make predictions using test data**
+```{r}
+set.seed(123)
+prediction13 <-predict(rf13,test[-11])
+```
+
+**Create confusion matrix using predictions**
+```{r}
+cm13 = confusionMatrix(prediction4, test$Readmitted, mode = "everything")
+cm13
+```
+**Investigate variable importances**
+```{r}
+var13 <- varImp(rf13)
+var13
+```
+
+**Plot variable importances**
+```{r}
+varImpPlot(rf1)
+```
+
+**Calculate Youden's Index**
+**Too low**
+```{r}
+cm13$byClass[1]
+cm13$byClass[2]
+J13 <- 0.9530637 + 0.05464191 - 1
+cat('J13:', J13)
+```
+
+
+
+
